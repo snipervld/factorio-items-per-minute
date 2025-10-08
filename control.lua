@@ -605,7 +605,7 @@ function get_real_type(entity)
 end
 
 function find_mining_target(entity)
-    if entity.type == "entity-ghost" or entity.mining_target == nil then
+    if entity.type == "entity-ghost" then
         local surface = entity.surface
         local position = entity.position
         local mining_radius = entity.ghost_prototype.get_mining_drill_radius()
@@ -634,6 +634,10 @@ function find_mining_target(entity)
     else
         local resource_type = get_real_name(entity) == "pumpjack" and "fluid" or "item"
 
-        return entity.mining_target.name, resource_type
+        if entity.mining_target ~= nil then
+            return entity.mining_target.name, resource_type
+        else
+            return "no-item", "item"
+        end
     end
 end
