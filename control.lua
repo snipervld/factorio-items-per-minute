@@ -46,8 +46,16 @@ end
 
 -- should we make a GUI for this entity?
 function is_valid_gui_entity(entity)
+    local real_name, real_type = get_real_name_and_type(entity)
+
     -- first we check the type of entity, most things should not have the GUI
-    if not (entity.type == "assembling-machine" or entity.type == "furnace") then return false end
+    if not (real_type == "assembling-machine"
+        or real_type == "furnace"
+        or real_type == "mining-drill"
+        )
+    then
+        return false
+    end
 
     if(global.entity_blacklist == nil) then
         initEntityBlacklist()
@@ -55,7 +63,7 @@ function is_valid_gui_entity(entity)
 
     -- then, we check the entity name against the blacklist
     for _, blacklist_name in pairs(global.entity_blacklist) do
-        if entity.name == blacklist_name then return false end
+        if real_name == blacklist_name then return false end
     end
 
     -- and if both those checks succeed then it is a valid entity
@@ -117,11 +125,12 @@ script.on_event(defines.events.on_tick, function(event)
 
         local update_gui = false
         local entity_recipe = get_recipe_name_safe(entity)
+        local crafting_speed, productivity_bonus = get_crafting_speed_and_bonus(entity)
         
         if (
             entity_recipe ~= gui_data.last_recipe
-            or entity.crafting_speed ~= gui_data.last_crafting_speed
-            or entity.productivity_bonus ~= gui_data.last_productivity_bonus
+            or crafting_speed ~= gui_data.last_crafting_speed
+            or productivity_bonus ~= gui_data.last_productivity_bonus
         ) then 
             update_gui = true 
         end
@@ -167,15 +176,22 @@ function create_assembler_rate_gui(player, entity)
     -- the base frame, that everything goes into
     local gui_frame = player.gui.relative.add{type="frame", caption={"text.ppm-assembler-craft-rates-gui-caption"}, name="assembler-craft-rates-gui"}
 
+    local real_type = get_real_type(entity)
+
     -- attach the new GUI to the correct machine type
-    if entity.type == "assembling-machine" then
+    if real_type == "assembling-machine" then
         gui_frame.anchor = {
             gui = defines.relative_gui_type.assembling_machine_gui,
             position = defines.relative_gui_position.right
         }
-    elseif entity.type == "furnace" then
+    elseif real_type == "furnace" then
         gui_frame.anchor = {
             gui = defines.relative_gui_type.furnace_gui,
+            position = defines.relative_gui_position.right
+        }
+    elseif real_type == "mining-drill" then
+        gui_frame.anchor = {
+            gui = defines.relative_gui_type.mining_drill_gui,
             position = defines.relative_gui_position.right
         }
     end
@@ -248,8 +264,7 @@ function update_assembler_rate_gui(player, entity)
 
     -- oh and we need to keep track of what the last thing was so we know when to update things
     gui_data.last_recipe = get_recipe_name_safe(entity)
-    gui_data.last_crafting_speed = entity.crafting_speed
-    gui_data.last_productivity_bonus = entity.productivity_bonus
+    gui_data.last_crafting_speed, gui_data.last_productivity_bonus = get_crafting_speed_and_bonus(entity)
 
     -- and while we're here, let's persist the player's button selection for when they open the GUI next
     -- this table never gets cleared unless the player gets removed
@@ -407,7 +422,70 @@ function destroy_assembler_rate_gui(player, entity)
     global.gui_data_by_player[player.index] = nil
 end
 
+function get_crafting_speed_and_bonus(entity)
+    --ghosts don't have module inventory and don't autoapply speed bonuses
+    local function calculate_modules_speed_bonus(entity)
+        local total_speed_percentage = 1
+        local module_inventory = entity.type == "entity-ghost" and entity.item_requests or entity.get_module_inventory().get_contents()
+
+        for _, item_info in pairs(module_inventory) do
+            local module_prototypes = prototypes.get_item_filtered({{filter="type", type="module"}, {filter="name", name=item_info.name, mode="and"}})
+
+            for _, module_prototype in pairs(module_prototypes) do
+                local module_effects = module_prototype.get_module_effects(item_info.quality)
+                local speed = module_effects.speed or 0 -- module's speed
+
+                total_speed_percentage = total_speed_percentage + speed * item_info.count
+            end
+        end
+
+        return total_speed_percentage
+    end
+
+    -- special case for mining drills
+    if get_real_type(entity) == "mining-drill" then
+        local force = game.forces.player
+        local prototype = entity.type == "entity-ghost" and entity.ghost_prototype or entity.prototype
+        local mining_speed = prototype.mining_speed*(1 + force.mining_drill_productivity_bonus)
+        local total_speed_percentage = calculate_modules_speed_bonus(entity)
+        mining_speed = mining_speed * total_speed_percentage
+
+        return mining_speed, 0
+    else
+        local crafting_speed = entity.crafting_speed
+        local productivity_bonus = entity.productivity_bonus
+
+        if entity.type == "entity-ghost" then
+            local total_speed_percentage = calculate_modules_speed_bonus(entity)
+            crafting_speed = crafting_speed * total_speed_percentage
+        end
+
+        return crafting_speed, productivity_bonus
+    end
+end
+
 function get_rate_data_for_entity(entity)
+    local crafting_speed, _ = get_crafting_speed_and_bonus(entity)
+
+    -- special case for mining drills
+    if get_real_type(entity) == "mining-drill" then
+        local out_ingredients = {}
+        local out_products = {}
+
+        local mining_speed = crafting_speed
+        local mining_target_name, mining_target_type = find_mining_target(entity)
+
+        table.insert(out_products,
+            {
+                type = mining_target_type,
+                name = mining_target_name,
+                rate = mining_speed
+            }
+        )
+
+        return out_ingredients, out_products
+    end
+
     -- done instead of entity.recipe() since this does null checking and returns previous furnace recipies
     local recipe = entity.get_recipe()
     if recipe == nil then return {}, {} end
@@ -415,7 +493,7 @@ function get_rate_data_for_entity(entity)
     local out_ingredients = {}
     local out_products = {}
 
-    local crafts_per_second = entity.crafting_speed/recipe.energy
+    local crafts_per_second = crafting_speed/recipe.energy
 
     for _, ingredient in pairs(recipe.ingredients) do
         table.insert(out_ingredients,
@@ -484,11 +562,78 @@ end
 -- will return the name of the recipe, or nil if no recipe is set
 -- in the case of a furnace, will also check the previous recipe
 function get_recipe_name_safe(entity)
-    local recipe_name = entity.get_recipe() and entity.get_recipe().name or nil
+    local real_type = get_real_type(entity)
 
-    if recipe_name == nil and entity.type == "furnace" then
+    if real_type == "mining-drill" then
+        local mining_target_name, _ = find_mining_target(entity)
+
+        return real_type..":"..mining_target_name
+    end
+
+    local recipe = entity.get_recipe()
+    local recipe_name = recipe and recipe.name or nil
+
+    if recipe_name == nil and real_type == "furnace" then
         recipe_name = entity.previous_recipe and entity.previous_recipe.name or nil
     end
 
     return recipe_name
+end
+
+function get_real_name_and_type(entity)
+    local real_type = entity.type
+    local real_name = entity.name
+
+    if entity.type == "entity-ghost" then
+        real_type = entity.ghost_type
+        real_name = entity.ghost_name
+    end
+
+    return real_name, real_type
+end
+
+function get_real_name(entity)
+    local real_name, real_type = get_real_name_and_type(entity)
+
+    return real_name
+end
+
+function get_real_type(entity)
+    local real_name, real_type = get_real_name_and_type(entity)
+
+    return real_type
+end
+
+function find_mining_target(entity)
+    if entity.type == "entity-ghost" or entity.mining_target == nil then
+        local surface = entity.surface
+        local position = entity.position
+        local mining_radius = entity.ghost_prototype.get_mining_drill_radius()
+
+        local area = {left_top={x=position.x-mining_radius, y=position.y-mining_radius}, right_bottom={x=position.x+mining_radius, y=position.y+mining_radius}}
+
+        local resources = surface.find_entities_filtered({area=area, type="resource"})
+        local resource_counts = {}
+        local most_used_resource, max_count = nil, 0
+
+        for _, resource in pairs(resources) do
+            resource_counts[resource.name] = (resource_counts[resource.name] or 0) + 1
+
+            if resource_counts[resource.name] > max_count then
+                most_used_resource, max_count = resource.name, resource_counts[resource.name]
+            end
+        end
+
+        if most_used_resource then
+            local resource_type = get_real_name(entity) == "pumpjack" and "fluid" or "item"
+
+            return most_used_resource, resource_type
+        else
+            return "no-item", "item"
+        end
+    else
+        local resource_type = get_real_name(entity) == "pumpjack" and "fluid" or "item"
+
+        return entity.mining_target.name, resource_type
+    end
 end
