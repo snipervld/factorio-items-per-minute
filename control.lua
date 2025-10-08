@@ -2,6 +2,13 @@ local global = {}
 local const INDEX_ITEM_PER_SEC = 1
 local const INDEX_ITEM_PER_MIN = 2
 local const INDEX_ITEM_PER_HOUR = 3
+local const DEFAULT_DISPLAY_AS_INDEX = INDEX_ITEM_PER_SEC
+
+local const display_as_map = {
+    {multiplier=1,    label={"text.ppm-items-per-second"}, postfix={"text.ppm-rate-per-second-postfix"}},
+    {multiplier=60,   label={"text.ppm-items-per-minute"}, postfix={"text.ppm-rate-per-minute-postfix"}},
+    {multiplier=3600, label={"text.ppm-items-per-hour"},   postfix={"text.ppm-rate-per-hour-postfix"}}
+}
 
 script.on_init(function()
     create_global_tables()
@@ -20,7 +27,6 @@ end)
 
 function create_global_tables()
     if not global.gui_data_by_player            then global.gui_data_by_player = {}            end
-    if not global.gui_data_by_player_persistent then global.gui_data_by_player_persistent = {} end
     if not global.entity_blacklist              then global.entity_blacklist = {} end
 end
 
@@ -139,10 +145,16 @@ script.on_event(defines.events.on_player_removed, function(event)
 
     -- don't do anything if there is no player data to begin with
     if not global then return end
-    if not global.gui_data_by_player or not global.gui_data_by_player[event.player_index] then return end
 
-    global.gui_data_by_player[event.player_index]            = nil
-    global.gui_data_by_player_persistent[event.player_index] = nil
+    if global.gui_data_by_player and global.gui_data_by_player[event.player_index] then
+        global.gui_data_by_player[event.player_index] = nil
+    end
+
+    if storage.gui_data_by_player_persistent
+        and storage.gui_data_by_player_persistent[event.player_index]
+    then
+        storage.gui_data_by_player_persistent[event.player_index] = nil
+    end
 end)
 
 
@@ -210,8 +222,12 @@ function create_assembler_rate_gui(player, entity)
     end
 
     -- if the persistent data table doesn't exist for a player, we create it here when the GUI is created
-    if not global.gui_data_by_player_persistent[player.index] then
-        global.gui_data_by_player_persistent[player.index] = {}
+    if not storage.gui_data_by_player_persistent then
+        storage.gui_data_by_player_persistent = {}
+    end
+
+    if not storage.gui_data_by_player_persistent[player.index] then
+        storage.gui_data_by_player_persistent[player.index] = {}
     end
 
     -- and we need to keep track of the entity, add it to a list
@@ -219,7 +235,7 @@ function create_assembler_rate_gui(player, entity)
         gui = gui_frame,
         data_flow = data_flow,
         button = controls_buttons,
-        button_state = global.gui_data_by_player_persistent[player.index].button_state or INDEX_ITEM_PER_SEC,
+        button_state = storage.gui_data_by_player_persistent[player.index].button_state or DEFAULT_DISPLAY_AS_INDEX,
         entity = entity
     }
 
@@ -253,7 +269,7 @@ function update_assembler_rate_gui(player, entity)
 
     -- and while we're here, let's persist the player's button selection for when they open the GUI next
     -- this table never gets cleared unless the player gets removed
-    global.gui_data_by_player_persistent[player.index].button_state = gui_data.button_state
+    storage.gui_data_by_player_persistent[player.index].button_state = gui_data.button_state
 end
 
 -- creates the list of ingredients and products in the GUI
