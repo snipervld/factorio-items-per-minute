@@ -423,9 +423,10 @@ function destroy_assembler_rate_gui(player, entity)
 end
 
 function get_crafting_speed_and_bonus(entity)
-    --ghosts don't have module inventory and don't autoapply speed bonuses
-    local function calculate_modules_speed_bonus(entity)
+    --ghosts don't have module inventory and don't autoapply bonuses
+    local function calculate_modules_bonuses(entity)
         local total_speed_percentage = 1
+        local total_productivity_bonus = 0
         local module_inventory = entity.type == "entity-ghost" and entity.item_requests or entity.get_module_inventory().get_contents()
 
         for _, item_info in pairs(module_inventory) do
@@ -434,20 +435,22 @@ function get_crafting_speed_and_bonus(entity)
             for _, module_prototype in pairs(module_prototypes) do
                 local module_effects = module_prototype.get_module_effects(item_info.quality)
                 local speed = module_effects.speed or 0 -- module's speed
+                local productivity = module_effects.productivity or 0 -- module's productivity
 
                 total_speed_percentage = total_speed_percentage + speed * item_info.count
+                total_productivity_bonus = total_productivity_bonus + productivity * item_info.count
             end
         end
 
-        return total_speed_percentage
+        return total_speed_percentage, total_productivity_bonus
     end
 
     -- special case for mining drills
     if get_real_type(entity) == "mining-drill" then
         local force = game.forces.player
         local prototype = entity.type == "entity-ghost" and entity.ghost_prototype or entity.prototype
-        local mining_speed = prototype.mining_speed*(1 + force.mining_drill_productivity_bonus)
-        local total_speed_percentage = calculate_modules_speed_bonus(entity)
+        local total_speed_percentage, total_productivity_bonus = calculate_modules_bonuses(entity)
+        local mining_speed = prototype.mining_speed*(1 + force.mining_drill_productivity_bonus + total_productivity_bonus)
         mining_speed = mining_speed * total_speed_percentage
 
         return mining_speed, 0
@@ -456,8 +459,9 @@ function get_crafting_speed_and_bonus(entity)
         local productivity_bonus = entity.productivity_bonus
 
         if entity.type == "entity-ghost" then
-            local total_speed_percentage = calculate_modules_speed_bonus(entity)
+            local total_speed_percentage, total_productivity_bonus = calculate_modules_bonuses(entity)
             crafting_speed = crafting_speed * total_speed_percentage
+            productivity_bonus = total_productivity_bonus
         end
 
         return crafting_speed, productivity_bonus
@@ -465,7 +469,7 @@ function get_crafting_speed_and_bonus(entity)
 end
 
 function get_rate_data_for_entity(entity)
-    local crafting_speed, _ = get_crafting_speed_and_bonus(entity)
+    local crafting_speed, productivity_bonus = get_crafting_speed_and_bonus(entity)
 
     -- special case for mining drills
     if get_real_type(entity) == "mining-drill" then
@@ -511,7 +515,7 @@ function get_rate_data_for_entity(entity)
         local product_probability = product.probability or 1
 
         local bonus_product = 0
-        local bonus_multiplier = entity.productivity_bonus
+        local bonus_multiplier = productivity_bonus
 
         if product.amount then
             product_min = product.amount
@@ -521,7 +525,7 @@ function get_rate_data_for_entity(entity)
             product_max = product.amount_max
         end
 
-        if entity.productivity_bonus > 0 then
+        if bonus_multiplier > 0 then
             local amount_without_productivity = product.catalyst_amount or 0
 
             if amount_without_productivity <= product_min then
