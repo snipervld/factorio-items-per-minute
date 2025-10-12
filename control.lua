@@ -479,13 +479,15 @@ function get_rate_data_for_entity(entity)
         local mining_speed = crafting_speed
         local mining_target_name, mining_target_type = find_mining_target(entity)
 
-        table.insert(out_products,
-            {
-                type = mining_target_type,
-                name = mining_target_name,
-                rate = mining_speed
-            }
-        )
+        if mining_target_name and mining_target_type then
+            table.insert(out_products,
+                {
+                    type = mining_target_type,
+                    name = mining_target_name,
+                    rate = mining_speed
+                }
+            )
+        end
 
         return out_ingredients, out_products
     end
@@ -571,7 +573,7 @@ function get_recipe_name_safe(entity)
     if real_type == "mining-drill" then
         local mining_target_name, _ = find_mining_target(entity)
 
-        return real_type..":"..mining_target_name
+        return real_type..":"..(mining_target_name or 'no-item')
     end
 
     local recipe = entity.get_recipe()
@@ -632,16 +634,12 @@ function find_mining_target(entity)
             local resource_type = get_real_name(entity) == "pumpjack" and "fluid" or "item"
 
             return most_used_resource, resource_type
-        else
-            return "no-item", "item"
         end
     else
         local resource_type = get_real_name(entity) == "pumpjack" and "fluid" or "item"
 
         if entity.mining_target ~= nil then
             return entity.mining_target.name, resource_type
-        else
-            return "no-item", "item"
         end
     end
 end
