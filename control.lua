@@ -477,14 +477,16 @@ function get_rate_data_for_entity(entity)
         local out_products = {}
 
         local mining_speed = crafting_speed
-        local mining_target_name, mining_target_type = find_mining_target(entity)
+        -- resource_multiplier is used by pumpjacks to get real pumping speed
+        -- non-oil patches have a constant multiplier 1
+        local mining_target_name, mining_target_type, resource_multiplier = find_mining_target(entity)
 
         if mining_target_name and mining_target_type then
             table.insert(out_products,
                 {
                     type = mining_target_type,
                     name = mining_target_name,
-                    rate = mining_speed
+                    rate = mining_speed * resource_multiplier
                 }
             )
         end
@@ -611,6 +613,8 @@ function get_real_type(entity)
 end
 
 function find_mining_target(entity)
+    local real_name = get_real_name(entity)
+
     if entity.type == "entity-ghost" then
         local surface = entity.surface
         local position = entity.position
@@ -626,20 +630,32 @@ function find_mining_target(entity)
             resource_counts[resource.name] = (resource_counts[resource.name] or 0) + 1
 
             if resource_counts[resource.name] > max_count then
-                most_used_resource, max_count = resource.name, resource_counts[resource.name]
+                most_used_resource, max_count = resource, resource_counts[resource.name]
             end
         end
 
         if most_used_resource then
-            local resource_type = get_real_name(entity) == "pumpjack" and "fluid" or "item"
+            local resource_type = "item"
+            local resource_multiplier = 1
 
-            return most_used_resource, resource_type
+            if real_name == "pumpjack" then
+                resource_type = "fluid"
+                resource_multiplier = most_used_resource.amount/30000
+            end
+
+            return most_used_resource.name, resource_type, resource_multiplier
         end
     else
-        local resource_type = get_real_name(entity) == "pumpjack" and "fluid" or "item"
-
         if entity.mining_target ~= nil then
-            return entity.mining_target.name, resource_type
+            local resource_type = "item"
+            local resource_multiplier = 1
+
+            if real_name == "pumpjack" then
+                resource_type = "fluid"
+                resource_multiplier = entity.mining_target.amount/30000
+            end
+
+            return entity.mining_target.name, resource_type, resource_multiplier
         end
     end
 end
