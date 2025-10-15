@@ -52,6 +52,7 @@ function is_valid_gui_entity(entity)
     if not (real_type == "assembling-machine"
         or real_type == "furnace"
         or real_type == "mining-drill"
+        or real_type == "rocket-silo"
         )
     then
         return false
@@ -192,6 +193,11 @@ function create_assembler_rate_gui(player, entity)
     elseif real_type == "mining-drill" then
         gui_frame.anchor = {
             gui = defines.relative_gui_type.mining_drill_gui,
+            position = defines.relative_gui_position.right
+        }
+    elseif real_type == "rocket-silo" then
+        gui_frame.anchor = {
+            gui = defines.relative_gui_type.rocket_silo_gui,
             position = defines.relative_gui_position.right
         }
     end
