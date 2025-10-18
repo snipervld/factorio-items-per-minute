@@ -458,8 +458,10 @@ function get_crafting_speed_and_bonus(entity)
         local total_speed_percentage, total_productivity_bonus = calculate_modules_bonuses(entity)
         local mining_speed = prototype.mining_speed*(1 + force.mining_drill_productivity_bonus + total_productivity_bonus)
         mining_speed = mining_speed * total_speed_percentage
+        -- mining fluid's consumption speed is not affected by productivity bonuses
+        local mining_fluid_consumption_speed = prototype.mining_speed * total_speed_percentage
 
-        return mining_speed, 0
+        return mining_speed, 0, mining_fluid_consumption_speed
     else
         local crafting_speed = entity.crafting_speed
         local productivity_bonus = entity.productivity_bonus
@@ -475,26 +477,41 @@ function get_crafting_speed_and_bonus(entity)
 end
 
 function get_rate_data_for_entity(entity)
-    local crafting_speed, productivity_bonus = get_crafting_speed_and_bonus(entity)
+    local crafting_speed, productivity_bonus, mining_fluid_consumption_speed = get_crafting_speed_and_bonus(entity)
 
     -- special case for mining drills
     if get_real_type(entity) == "mining-drill" then
         local out_ingredients = {}
         local out_products = {}
 
-        local mining_speed = crafting_speed
         -- resource_multiplier is used by pumpjacks to get real pumping speed
-        -- non-oil patches have a constant multiplier 1
-        local mining_target_name, mining_target_type, resource_multiplier = find_mining_target(entity)
+        -- non-oil patches have a constant multiplier
+        local mineable_resources, resource_multiplier, mining_fluid = get_mineable_resources(entity)
 
-        if mining_target_name and mining_target_type then
-            table.insert(out_products,
+        if mining_fluid then
+            local mining_speed = mining_fluid_consumption_speed
+
+            table.insert(out_ingredients,
                 {
-                    type = mining_target_type,
-                    name = mining_target_name,
+                    type = mining_fluid.type,
+                    name = mining_fluid.name,
                     rate = mining_speed * resource_multiplier
                 }
             )
+        end
+
+        if mineable_resources then
+            local mining_speed = crafting_speed
+
+            for _, resource in ipairs(mineable_resources) do
+                table.insert(out_products,
+                    {
+                        type = resource.type,
+                        name = resource.name,
+                        rate = mining_speed * resource_multiplier
+                    }
+                )
+            end
         end
 
         return out_ingredients, out_products
@@ -579,9 +596,9 @@ function get_recipe_name_safe(entity)
     local real_type = get_real_type(entity)
 
     if real_type == "mining-drill" then
-        local mining_target_name, _ = find_mining_target(entity)
+        local mineable_resources = get_mineable_resources(entity)
 
-        return real_type..":"..(mining_target_name or 'no-item')
+        return real_type..":"..(mineable_resources and mineable_resources[1] and mineable_resources[1].name or 'no-item')
     end
 
     local recipe = entity.get_recipe()
@@ -618,8 +635,9 @@ function get_real_type(entity)
     return real_type
 end
 
-function find_mining_target(entity)
+function get_mineable_resources(entity)
     local real_name = get_real_name(entity)
+    local mining_target = nil
 
     if entity.type == "entity-ghost" then
         local surface = entity.surface
@@ -640,28 +658,38 @@ function find_mining_target(entity)
             end
         end
 
-        if most_used_resource then
-            local resource_type = "item"
-            local resource_multiplier = 1
-
-            if real_name == "pumpjack" then
-                resource_type = "fluid"
-                resource_multiplier = most_used_resource.amount/30000
-            end
-
-            return most_used_resource.name, resource_type, resource_multiplier
-        end
+        mining_target = most_used_resource
     else
-        if entity.mining_target ~= nil then
-            local resource_type = "item"
-            local resource_multiplier = 1
+        mining_target = entity.mining_target
+    end
 
-            if real_name == "pumpjack" then
-                resource_type = "fluid"
-                resource_multiplier = entity.mining_target.amount/30000
-            end
+    if mining_target then
+        local mineable_properties = mining_target.prototype.mineable_properties
+        -- For tungsten ore mining_time=5 (500%)
+        local mining_time = mineable_properties.mining_time
+        local out_resources = {}
+        local resource_multiplier = 1/mining_time
 
-            return entity.mining_target.name, resource_type, resource_multiplier
+        if real_name == "pumpjack" then
+            resource_multiplier = resource_multiplier*mining_target.amount/30000
         end
+
+        local mining_fluid = mineable_properties.required_fluid and {
+            name=mineable_properties.required_fluid,
+            type="fluid",
+            amount=mineable_properties.fluid_amount
+        }
+
+        for _, product in ipairs(mineable_properties.products) do
+            -- TODO: product.probability, product.amount, product.amount_min, product.amount_max
+            table.insert(out_resources,
+                {
+                    name = product.name,
+                    type = product.type, -- item or fluid
+                }
+            )
+        end
+
+        return out_resources, resource_multiplier, mining_fluid
     end
 end
