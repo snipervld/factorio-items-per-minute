@@ -542,7 +542,7 @@ function get_rate_data_for_entity(entity)
         local product_probability = product.probability or 1
 
         local bonus_product = 0
-        local bonus_multiplier = productivity_bonus
+        local bonus_multiplier = productivity_bonus + recipe.productivity_bonus
 
         if product.amount then
             product_min = product.amount
