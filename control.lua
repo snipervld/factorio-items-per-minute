@@ -465,11 +465,16 @@ function get_crafting_speed_and_bonus(entity)
     else
         local crafting_speed = entity.crafting_speed
         local productivity_bonus = entity.productivity_bonus
+        local speed_bonus = entity.speed_bonus
 
         if entity.type == "entity-ghost" then
             local total_speed_percentage, total_productivity_bonus = calculate_modules_bonuses(entity)
-            crafting_speed = crafting_speed * total_speed_percentage
-            productivity_bonus = total_productivity_bonus
+
+            -- add calculated module bonuses to existing base bonuses
+            productivity_bonus = productivity_bonus + total_productivity_bonus
+            speed_bonus = speed_bonus + total_speed_percentage
+
+            crafting_speed = crafting_speed * speed_bonus
         end
 
         return crafting_speed, productivity_bonus
