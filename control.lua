@@ -489,9 +489,7 @@ function get_rate_data_for_entity(entity)
         local out_ingredients = {}
         local out_products = {}
 
-        -- resource_multiplier is used by pumpjacks to get real pumping speed
-        -- non-oil patches have a constant multiplier
-        local mineable_resources, resource_multiplier, mining_fluid = get_mineable_resources(entity)
+        local mineable_resources, mining_fluid = get_mineable_resources(entity)
 
         if mining_fluid then
             local mining_speed = mining_fluid_consumption_speed
@@ -500,7 +498,7 @@ function get_rate_data_for_entity(entity)
                 {
                     type = mining_fluid.type,
                     name = mining_fluid.name,
-                    rate = mining_speed * resource_multiplier
+                    rate = mining_speed * mining_fluid.resources_per_second,
                 }
             )
         end
@@ -509,13 +507,17 @@ function get_rate_data_for_entity(entity)
             local mining_speed = crafting_speed
 
             for _, resource in ipairs(mineable_resources) do
-                table.insert(out_products,
-                    {
-                        type = resource.type,
-                        name = resource.name,
-                        rate = mining_speed * resource_multiplier
-                    }
-                )
+                -- some mods may have resources with a 0% chance to return ores
+                -- we don't want to return an ore in this case
+                if resource.resources_per_second > 0 then
+                    table.insert(out_products,
+                        {
+                            type = resource.type,
+                            name = resource.name,
+                            rate = mining_speed * resource.resources_per_second,
+                        }
+                    )
+                end
             end
         end
 
@@ -672,29 +674,50 @@ function get_mineable_resources(entity)
         local mineable_properties = mining_target.prototype.mineable_properties
         -- For tungsten ore mining_time=5 (500%)
         local mining_time = mineable_properties.mining_time
+        -- amount of mined resources per second
+        local global_resources_per_second = 1/mining_time
         local out_resources = {}
-        local resource_multiplier = 1/mining_time
 
-        if real_name == "pumpjack" then
-            resource_multiplier = resource_multiplier*mining_target.amount/30000
-        end
-
-        local mining_fluid = mineable_properties.required_fluid and {
+        local mining_fluid = mineable_properties.required_fluid and mineable_properties.fluid_amount and {
             name=mineable_properties.required_fluid,
             type="fluid",
-            amount=mineable_properties.fluid_amount
+            amount=mineable_properties.fluid_amount,
+            resources_per_second=global_resources_per_second,
         }
 
         for _, product in ipairs(mineable_properties.products) do
-            -- TODO: product.probability, product.amount, product.amount_min, product.amount_max
+            local resources_per_second = global_resources_per_second
+
+            local resource_min = 0
+            local resource_max = 0
+            local resource_probability = product.probability or 1
+
+            if product.amount then
+                resource_min = product.amount
+                resource_max = product.amount
+            elseif product.amount_min and product.amount_max then
+                resource_min = product.amount_min
+                resource_max = product.amount_max
+            end
+
+            local expected_resource = ((resource_min + resource_max)/2)*resource_probability
+
+            resources_per_second = resources_per_second*expected_resource
+
+            -- e.g. crude oil, sulfuric acid
+            if mining_target.prototype.infinite_resource then
+                resources_per_second = resources_per_second*mining_target.amount/mining_target.prototype.normal_resource_amount
+            end
+
             table.insert(out_resources,
                 {
                     name = product.name,
                     type = product.type, -- item or fluid
+                    resources_per_second = resources_per_second,
                 }
             )
         end
 
-        return out_resources, resource_multiplier, mining_fluid
+        return out_resources, mining_fluid
     end
 end
