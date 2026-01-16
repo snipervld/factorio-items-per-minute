@@ -1,3 +1,12 @@
+Version: 0.4.0
+Date 01. 16. 2026
+Changes
+  - Full credit to SniperVld for massive contribution for this version.
+  - Support ghosts, miners, pumpjacks and rocket silos
+  - Support Quality ingredient
+  - Saved last selected display metric (Display As)
+---------------------------------------------------------------------------------------------------
+
 Version: 0.3.0
 Date 07. 09. 2025
 Changes
