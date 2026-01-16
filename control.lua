@@ -94,6 +94,22 @@ script.on_event(defines.events.on_gui_click, function(event)
 
     local gui_data = global.gui_data_by_player[event.player_index]
     if gui_data then
+        if event.alt
+            and event.element.tags
+            and event.element.tags.ppm_button == "item_sprite"
+        then
+            local item_data = event.element.tags
+            game.players[event.player_index].open_factoriopedia_gui()
+
+            if item_data.type == "item" then
+                game.players[event.player_index].open_factoriopedia_gui(prototypes.item[item_data.name])
+            elseif item_data.type == "fluid" then
+                game.players[event.player_index].open_factoriopedia_gui(prototypes.fluid[item_data.name])
+            end
+
+            return
+        end
+
         local clicked = nil
         for k, button in ipairs(gui_data.button) do
             if event.element == button then 
@@ -224,8 +240,8 @@ function create_assembler_rate_gui(player, entity)
 
     local controls_buttons = {}
 
-    for k, label in ipairs({{"text.ppm-items-per-second"}, {"text.ppm-items-per-minute"}, {"text.ppm-items-per-hour"}}) do
-        local new_button = controls_buttons_flow.add{type="button", caption=label}
+    for k, item in ipairs(display_as_map) do
+        local new_button = controls_buttons_flow.add{type="button", caption=item.label}
         new_button.style.size = {70,25}
         new_button.style.padding = {0,0,0,0}
         controls_buttons[k] = new_button
@@ -336,11 +352,6 @@ end
 function create_gui_list_entry(parent, item_data, button_state)
     local data_name = nil
     local data_sprite = nil
-    local button_state_lut = {
-        {1,    {"text.ppm-rate-per-second-postfix"}},
-        {60,   {"text.ppm-rate-per-minute-postfix"}},
-        {3600, {"text.ppm-rate-per-hour-postfix"}}
-    }
 
     if item_data.type == "item" then
         data_name = prototypes.item[item_data.name].localised_name
@@ -357,8 +368,8 @@ function create_gui_list_entry(parent, item_data, button_state)
 
     local rate = flow.add{type="label"}
     rate.caption = format_gui_list_entry_rate(
-        item_data.rate * button_state_lut[button_state][1],
-        button_state_lut[button_state][2]
+        item_data.rate * display_as_map[button_state].multiplier,
+        display_as_map[button_state].postfix
     )
     rate.style.width = 70
     rate.style.horizontal_align = "right"
@@ -368,7 +379,23 @@ function create_gui_list_entry(parent, item_data, button_state)
     line.style.vertically_stretchable = false
     line.style.height = 32
     
-    local sprite = flow.add{type="sprite", sprite=data_sprite}
+    local sprite = flow.add{
+        type="sprite-button",
+        sprite=data_sprite,
+        quality=item_data.quality,
+        style="transparent_slot", -- disable click sound
+        elem_tooltip={
+            type=item_data.type=="item" and item_data.quality and "item-with-quality" or item_data.type, -- otherwise tooltip ignores quality
+            name=item_data.name,
+            quality=item_data.quality
+        },
+        tags={
+            ppm_button="item_sprite",
+            type=item_data.type,
+            name=item_data.name,
+            quality=item_data.quality
+        }
+    }
     
     local label = flow.add{type="label", caption=data_name}
     label.style.padding = 2
@@ -525,7 +552,7 @@ function get_rate_data_for_entity(entity)
     end
 
     -- done instead of entity.recipe() since this does null checking and returns previous furnace recipies
-    local recipe = entity.get_recipe()
+    local recipe, quality = entity.get_recipe()
     if recipe == nil then return {}, {} end
 
     local out_ingredients = {}
@@ -538,6 +565,7 @@ function get_rate_data_for_entity(entity)
             {
                 type = ingredient.type,
                 name = ingredient.name,
+                quality = ingredient.type == "item" and quality and quality.name or nil,
                 rate = ingredient.amount * crafts_per_second
             }
         )
@@ -587,6 +615,7 @@ function get_rate_data_for_entity(entity)
                 {
                     type = product.type,
                     name = product.name,
+                    quality = product.type == "item" and quality and quality.name or nil,
                     rate = expected_product * crafts_per_second
                 }
             )
