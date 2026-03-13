@@ -701,7 +701,8 @@ function get_rate_data_for_entity(entity)
         end
 
         if bonus_multiplier > 0 then
-            local amount_without_productivity = product.catalyst_amount or 0
+            -- replaced catalyst_amount with ignored_by_productivity - catalyst_amount doesn't exist anymore
+            local amount_without_productivity = product.ignored_by_productivity or 0
 
             if amount_without_productivity <= product_min then
                 bonus_product = ((product_min + product_max)/2 - amount_without_productivity)
@@ -719,7 +720,7 @@ function get_rate_data_for_entity(entity)
             end
         end
 
-        local expected_product = ((product_min + product_max)/2 + bonus_product*bonus_multiplier)*product_probability
+        local expected_product = ((product_min + product_max)/2 + bonus_product*bonus_multiplier)*product_probability + product_probability*(product.extra_count_fraction or 0)
         
         -- some mods have item voids that use a recipe with a 0% chance to return products
         -- we don't want to return a product for a dummy void item
