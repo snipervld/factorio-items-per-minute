@@ -13,21 +13,25 @@ local const display_as_map = {
 script.on_init(function()
     create_global_tables()
     initEntityBlacklist()
+    initConsumptionListWhitelist()
 end)
 
 script.on_load(function()
     create_global_tables()
     initEntityBlacklist()
+    initConsumptionListWhitelist()
 end)
 
 script.on_configuration_changed(function()
     create_global_tables()
     initEntityBlacklist()
+    initConsumptionListWhitelist()
 end)
 
 function create_global_tables()
-    if not global.gui_data_by_player            then global.gui_data_by_player = {}            end
-    if not global.entity_blacklist              then global.entity_blacklist = {} end
+    if not global.gui_data_by_player            then global.gui_data_by_player = {}         end
+    if not global.entity_blacklist              then global.entity_blacklist = {}           end
+    if not global.consumption_list_whitelist    then global.consumption_list_whitelist = {} end
 end
 
 function initEntityBlacklist()
@@ -42,11 +46,29 @@ function initEntityBlacklist()
     local entity_blacklist_str = tostring(settings.startup["acr-blacklist"].value)
 
     --remove all spaces in the string, people are bad at reading and might put spaces after the comma
-    entity_blacklist_str = entity_blacklist_str:gsub("%s+", "")
+    --also, remove parentheses
+    entity_blacklist_str = entity_blacklist_str:gsub("[%s()]+", "")
 
     --and then split the string with commans and add each prototype-name to it's own blacklist
     for prototype_name in string.gmatch(entity_blacklist_str, '([^,]+)') do
         table.insert(global.entity_blacklist, prototype_name)
+    end
+end
+
+function initConsumptionListWhitelist()
+    local consumption_list_whitelist_str = tostring(settings.startup["ppm-consumption-list-whitelist"].value)
+
+    --remove all spaces in the string, people are bad at reading and might put spaces after the comma
+    --also, remove parentheses
+    consumption_list_whitelist_str = consumption_list_whitelist_str:gsub("[%s()]+", "")
+
+    if consumption_list_whitelist_str == "*" then
+        global.consumption_list_for_all = true
+    else
+        --and then split the string with commans and add each prototype-name to it's own whitelist
+        for prototype_name in string.gmatch(consumption_list_whitelist_str, '([^,]+)') do
+            table.insert(global.consumption_list_whitelist, prototype_name)
+        end
     end
 end
 
@@ -75,6 +97,26 @@ function is_valid_gui_entity(entity)
 
     -- and if both those checks succeed then it is a valid entity
     return true
+end
+
+function should_display_consumption_list(entity)
+    local real_name = get_real_name(entity)
+
+    if global.consumption_list_whitelist == nil then
+        initConsumptionListWhitelist()
+    end
+
+    if global.consumption_list_for_all == true then
+        return true
+    end
+
+    for _, whitelist_name in pairs(global.consumption_list_whitelist) do
+        if real_name == whitelist_name then
+            return true
+        end
+    end
+
+    return false
 end
 
 script.on_event(defines.events.on_gui_opened, function(event)
@@ -107,7 +149,7 @@ script.on_event(defines.events.on_gui_click, function(event)
             local item_data = event.element.tags
             game.players[event.player_index].open_factoriopedia_gui()
 
-            if item_data.type == "item" then
+            if item_data.type == "item" or item_data.type == "capsule" then
                 game.players[event.player_index].open_factoriopedia_gui(prototypes.item[item_data.name])
             elseif item_data.type == "fluid" then
                 game.players[event.player_index].open_factoriopedia_gui(prototypes.fluid[item_data.name])
@@ -314,6 +356,7 @@ end
 function create_gui_list_ui(parent, entity, button_state)
     if get_recipe_name_safe(entity) then
         local recipe_ingredients, recipe_products = get_rate_data_for_entity(entity)
+        local has_lists = false
 
         if #recipe_ingredients > 0 or #recipe_products > 0 then
             -- we only need to make the list if there's ingredients in the recipes (some modded recipies have)
@@ -331,12 +374,34 @@ function create_gui_list_ui(parent, entity, button_state)
                 create_gui_list(parent, {"text.ppm-products-label"}, recipe_products, button_state)
             end
 
-            return true
-        else
-            local no_items_text = parent.add{type="label", caption={"text.ppm-no-items-text"}}
-
-            return false
+            has_lists = true
         end
+
+        if should_display_consumption_list(entity) then
+            local consumable_items = get_energy_consumption_for_entity(entity)
+
+            if #consumable_items > 0 then
+                if has_lists then
+                    parent.add{type="line"}
+                end
+
+                local use_scroll_pane = #consumable_items > 5
+                local list = create_gui_list(parent, {"text.ppm-consumption-label"}, consumable_items, button_state, use_scroll_pane)
+
+                if use_scroll_pane then
+                    list.style.maximal_height = 265 -- fits exactly 5 items
+                end
+
+                has_lists = true
+            end
+        end
+
+        --if has_lists then
+            --the panel will be hidden anyway, so no need to add this label - remove it?
+            --local no_items_text = parent.add{type="label", caption={"text.ppm-no-items-text"}}
+        --end
+
+        return has_lists
     else
         local no_recipe_text = parent.add{type="label", caption={"text.ppm-no-recipe-text"}}
 
@@ -344,7 +409,7 @@ function create_gui_list_ui(parent, entity, button_state)
     end
 end
 
-function create_gui_list(parent, label, item_data_list, button_state)
+function create_gui_list(parent, label, item_data_list, button_state, is_scroll_pane)
     local container = parent.add{type="flow", direction="vertical"}
     
     local header = container.add{type="label", caption=label}
@@ -353,7 +418,10 @@ function create_gui_list(parent, label, item_data_list, button_state)
     flow_frame.style.horizontally_stretchable = true
     flow_frame.style.padding = 5
 
-    local flow = flow_frame.add{type="flow", direction="vertical"}
+    local flow = flow_frame.add{type=is_scroll_pane and "scroll-pane" or "flow", direction="vertical"}
+    if is_scroll_pane then
+        flow.horizontal_scroll_policy = "always"
+    end
 
     for i = 1, #item_data_list do
         create_gui_list_entry(flow, item_data_list[i], button_state)
@@ -369,7 +437,7 @@ function create_gui_list_entry(parent, item_data, button_state)
     local data_name = nil
     local data_sprite = nil
 
-    if item_data.type == "item" then
+    if item_data.type == "item" or item_data.type == "capsule" then
         data_name = prototypes.item[item_data.name].localised_name
         data_sprite = "item/" .. item_data.name
     elseif item_data.type == "fluid" then
@@ -401,7 +469,7 @@ function create_gui_list_entry(parent, item_data, button_state)
         quality=item_data.quality,
         style="transparent_slot", -- disable click sound
         elem_tooltip={
-            type=item_data.type=="item" and item_data.quality and "item-with-quality" or item_data.type, -- otherwise tooltip ignores quality
+            type=(item_data.type=="item" or item_data.type=="capsule") and item_data.quality and "item-with-quality" or ((item_data.type=="item" or item_data.type=="capsule") and "item" or "fluid"), -- otherwise tooltip ignores quality
             name=item_data.name,
             quality=item_data.quality
         },
@@ -472,28 +540,6 @@ function destroy_assembler_rate_gui(player, entity)
 end
 
 function get_crafting_speed_and_bonus(entity)
-    --ghosts don't have module inventory and don't autoapply bonuses
-    local function calculate_modules_bonuses(entity)
-        local total_speed_percentage = 1
-        local total_productivity_bonus = 0
-        local module_inventory = entity.type == "entity-ghost" and entity.item_requests or entity.get_module_inventory().get_contents()
-
-        for _, item_info in pairs(module_inventory) do
-            local module_prototypes = prototypes.get_item_filtered({{filter="type", type="module"}, {filter="name", name=item_info.name, mode="and"}})
-
-            for _, module_prototype in pairs(module_prototypes) do
-                local module_effects = module_prototype.get_module_effects(item_info.quality)
-                local speed = module_effects.speed or 0 -- module's speed
-                local productivity = module_effects.productivity or 0 -- module's productivity
-
-                total_speed_percentage = total_speed_percentage + speed * item_info.count
-                total_productivity_bonus = total_productivity_bonus + productivity * item_info.count
-            end
-        end
-
-        return total_speed_percentage, total_productivity_bonus
-    end
-
     -- special case for mining drills
     if get_real_type(entity) == "mining-drill" then
         local force = game.forces.player
@@ -509,19 +555,58 @@ function get_crafting_speed_and_bonus(entity)
         local crafting_speed = entity.crafting_speed
         local productivity_bonus = entity.productivity_bonus
         local speed_bonus = entity.speed_bonus
+        local consumption_bonus = entity.consumption_bonus
+
+        local prototype = entity.type == "entity-ghost" and entity.ghost_prototype or entity.prototype
+        local energy_consumption = prototype.get_max_energy_usage(entity.quality)
 
         if entity.type == "entity-ghost" then
-            local total_speed_percentage, total_productivity_bonus = calculate_modules_bonuses(entity)
+            local total_speed_percentage, total_productivity_bonus, total_consumption_percentage = calculate_modules_bonuses(entity)
 
             -- add calculated module bonuses to existing base bonuses
             productivity_bonus = productivity_bonus + total_productivity_bonus
             speed_bonus = speed_bonus + total_speed_percentage
 
             crafting_speed = crafting_speed * speed_bonus
+
+            energy_consumption = energy_consumption * total_consumption_percentage
         end
 
         return crafting_speed, productivity_bonus
     end
+end
+
+-- Ghosts don't have module inventory and don't autoapply bonuses,
+-- so this function can be used for this case
+function calculate_modules_bonuses(entity)
+    local total_speed_percentage = 1
+    local total_productivity_bonus = 0
+    local total_consumption_percentage = 1
+    local module_inventory = entity.type == "entity-ghost" and entity.item_requests or (entity.get_module_inventory() and entity.get_module_inventory().get_contents())
+
+    if module_inventory == nil then
+        return total_speed_percentage, total_productivity_bonus, total_consumption_percentage
+    end
+
+    for _, item_info in pairs(module_inventory) do
+        local module_prototypes = prototypes.get_item_filtered({{filter="type", type="module"}, {filter="name", name=item_info.name, mode="and"}})
+
+        for _, module_prototype in pairs(module_prototypes) do
+            local module_effects = module_prototype.get_module_effects(item_info.quality)
+
+            if module_effects then
+                local speed = module_effects.speed or 0 -- module's speed
+                local productivity = module_effects.productivity or 0 -- module's productivity
+                local consumption = module_effects.consumption or 0 -- module's consumption
+
+                total_speed_percentage = total_speed_percentage + speed * item_info.count
+                total_productivity_bonus = total_productivity_bonus + productivity * item_info.count
+                total_consumption_percentage = total_consumption_percentage + consumption * item_info.count
+            end
+        end
+    end
+
+    return total_speed_percentage, total_productivity_bonus, total_consumption_percentage
 end
 
 function get_rate_data_for_entity(entity)
@@ -639,6 +724,54 @@ function get_rate_data_for_entity(entity)
     end
 
     return out_ingredients, out_products
+end
+
+function get_energy_consumption_for_entity(entity)
+    local consumable_items = {}
+    local prototype = entity.type == "entity-ghost" and entity.ghost_prototype or entity.prototype
+
+    local burner_prototype = prototype.burner_prototype
+
+    -- energy_usage, I believe are expressed in terms of J/tick.
+    -- W is a J per second
+    -- so W = J*60
+    local max_energy_usage = prototype.get_max_energy_usage()
+
+    local total_consumption_percentage = 0
+
+    if entity.effects then
+        total_consumption_percentage = 1 + (entity.effects.consumption or 0)
+    else
+        local _, _, total_consumption_percentage_val = calculate_modules_bonuses(entity)
+        total_consumption_percentage = total_consumption_percentage_val
+    end
+
+    local max_consumption_per_tick = max_energy_usage*total_consumption_percentage
+    local max_consumption_per_second = max_consumption_per_tick*60
+
+    if burner_prototype then
+        for fuel_category, _ in pairs(burner_prototype.fuel_categories) do
+            local fuel_category_prototypes = prototypes.get_item_filtered({{filter="fuel-category", ["fuel-category"]=fuel_category}})
+
+            for _, item_prototype in pairs(fuel_category_prototypes) do
+                local effectivity = burner_prototype.effectivity or 1
+
+                -- building fuel consumption (J/sec) / fuel's energy value (J)
+                local effective_fuel_value = item_prototype.fuel_value * effectivity
+                local fuel_per_second = max_consumption_per_second / effective_fuel_value
+
+                table.insert(consumable_items,
+                    {
+                        type = item_prototype.type,
+                        name = item_prototype.name,
+                        rate = fuel_per_second,
+                    }
+                )
+            end
+        end
+    end
+
+    return consumable_items
 end
 
 -- safe way of getting the name of a recipe
