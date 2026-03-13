@@ -1,10 +1,14 @@
-local global = {}
-local const INDEX_ITEM_PER_SEC = 1
-local const INDEX_ITEM_PER_MIN = 2
-local const INDEX_ITEM_PER_HOUR = 3
-local const DEFAULT_DISPLAY_AS_INDEX = INDEX_ITEM_PER_SEC
+--- @diagnostic disable: unused-local
 
-local const display_as_map = {
+--- @type PPMGlobalData
+global = {}
+local INDEX_ITEM_PER_SEC = 1
+local INDEX_ITEM_PER_MIN = 2
+local INDEX_ITEM_PER_HOUR = 3
+local DEFAULT_DISPLAY_AS_INDEX = INDEX_ITEM_PER_SEC
+
+--- @type PPMDisplayAsMapEntry[]
+local display_as_map = {
     {multiplier=1,    label={"text.ppm-items-per-second"}, postfix={"text.ppm-rate-per-second-postfix"}},
     {multiplier=60,   label={"text.ppm-items-per-minute"}, postfix={"text.ppm-rate-per-minute-postfix"}},
     {multiplier=3600, label={"text.ppm-items-per-hour"},   postfix={"text.ppm-rate-per-hour-postfix"}}
@@ -72,7 +76,8 @@ function initConsumptionListWhitelist()
     end
 end
 
--- should we make a GUI for this entity?
+-- Should we make a GUI for this entity?
+--- @param entity LuaEntity
 function is_valid_gui_entity(entity)
     local real_name, real_type = get_real_name_and_type(entity)
 
@@ -100,6 +105,7 @@ function is_valid_gui_entity(entity)
     return true
 end
 
+--- @param entity LuaEntity
 function should_display_consumption_list(entity)
     local real_name = get_real_name(entity)
 
@@ -124,6 +130,7 @@ script.on_event(defines.events.on_gui_opened, function(event)
     if event.gui_type == defines.gui_type.entity then
         if is_valid_gui_entity(event.entity) then
             local player = game.get_player(event.player_index)
+            --- @cast player -nil
             create_assembler_rate_gui(player, event.entity)
         end
     end
@@ -133,6 +140,7 @@ script.on_event(defines.events.on_gui_closed, function(event)
     if event.gui_type == defines.gui_type.entity then
         if is_valid_gui_entity(event.entity) then
             local player = game.get_player(event.player_index)
+            --- @cast player -nil
             destroy_assembler_rate_gui(player, event.entity)
         end
     end
@@ -147,8 +155,8 @@ script.on_event(defines.events.on_gui_click, function(event)
             and event.element.tags
             and event.element.tags.ppm_button == "item_sprite"
         then
+            --- @type PPMItemData
             local item_data = event.element.tags
-            game.players[event.player_index].open_factoriopedia_gui()
 
             if item_data.type == "item" or item_data.type == "capsule" then
                 game.players[event.player_index].open_factoriopedia_gui(prototypes.item[item_data.name])
@@ -161,7 +169,7 @@ script.on_event(defines.events.on_gui_click, function(event)
 
         local clicked = nil
         for k, button in ipairs(gui_data.button) do
-            if event.element == button then 
+            if event.element == button then
                 clicked = k
             end
         end
@@ -180,6 +188,7 @@ script.on_event(defines.events.on_tick, function(event)
     -- iterate through tracked entities, and update guis if a thing that affects crafting speed changes
     for player_index, gui_data in pairs(global.gui_data_by_player) do
         local player = game.get_player(player_index)
+        --- @cast player -nil
         local entity = gui_data.entity
 
         -- somehow the entity doesn't exist anymore or is invalid, get rid of the GUI
@@ -192,16 +201,16 @@ script.on_event(defines.events.on_tick, function(event)
         local update_gui = false
         local entity_recipe = get_recipe_name_safe(entity)
         local crafting_speed, productivity_bonus = get_crafting_speed_and_bonus(entity)
-        
+
         if (
             entity_recipe ~= gui_data.last_recipe
             or crafting_speed ~= gui_data.last_crafting_speed
             or productivity_bonus ~= gui_data.last_productivity_bonus
-        ) then 
-            update_gui = true 
+        ) then
+            update_gui = true
         end
 
-        if update_gui then 
+        if update_gui then
             update_assembler_rate_gui(player, entity)
         end
 
@@ -226,7 +235,8 @@ script.on_event(defines.events.on_player_removed, function(event)
     end
 end)
 
-
+--- @param player LuaPlayer
+--- @param entity LuaEntity
 function create_assembler_rate_gui(player, entity)
     -- we're going to need these, make them if they don't exist
     create_global_tables()
@@ -282,7 +292,7 @@ function create_assembler_rate_gui(player, entity)
     local contents_flow  = content_frame.add{type="flow", direction="vertical"}
 
     -- the ingredient/product list gets it's own flow
-    -- since we may need to rebuild this, and 
+    -- since we may need to rebuild this, and
     -- it's useful to have a container to put stuff in
     -- we put stuff in here in the update stage
     local data_flow = contents_flow.add{type="flow", direction="vertical"}
@@ -332,10 +342,14 @@ function create_assembler_rate_gui(player, entity)
     update_assembler_rate_gui(player, entity)
 end
 
+--- @param player LuaPlayer
+--- @param entity LuaEntity
 function update_assembler_rate_gui(player, entity)
     local gui_data = global.gui_data_by_player[player.index]
     local data_flow    = gui_data.data_flow
     local button_state = gui_data.button_state
+    --- @cast data_flow -nil
+    --- @cast button_state -nil
 
     -- populate the list of ingredients/products
     data_flow.clear()
@@ -357,8 +371,11 @@ function update_assembler_rate_gui(player, entity)
     storage.gui_data_by_player_persistent[player.index].button_state = gui_data.button_state
 end
 
--- creates the list of ingredients and products in the GUI
+-- Creates the list of ingredients and products in the GUI
 -- returns a boolean indicating if the entity had a valid recipe
+--- @param parent LuaGuiElement
+--- @param entity LuaEntity
+--- @param button_state int32
 function create_gui_list_ui(parent, entity, button_state)
     if get_recipe_name_safe(entity) then
         local recipe_ingredients, recipe_products = get_rate_data_for_entity(entity)
@@ -415,9 +432,14 @@ function create_gui_list_ui(parent, entity, button_state)
     end
 end
 
+--- @param parent LuaGuiElement
+--- @param label LocalisedString
+--- @param item_data_list PPMItemData[]
+--- @param button_state int32
+--- @param is_scroll_pane? boolean
 function create_gui_list(parent, label, item_data_list, button_state, is_scroll_pane)
     local container = parent.add{type="flow", direction="vertical"}
-    
+
     local header = container.add{type="label", caption=label}
 
     local flow_frame = container.add{type="frame", style="deep_frame_in_shallow_frame"}
@@ -439,6 +461,9 @@ function create_gui_list(parent, label, item_data_list, button_state, is_scroll_
     return container
 end
 
+--- @param parent LuaGuiElement
+--- @param item_data PPMItemData
+--- @param button_state int32
 function create_gui_list_entry(parent, item_data, button_state)
     local data_name = nil
     local data_sprite = nil
@@ -468,7 +493,7 @@ function create_gui_list_entry(parent, item_data, button_state)
     local line = flow.add{type="line", direction = "vertical"}
     line.style.vertically_stretchable = false
     line.style.height = 32
-    
+
     local sprite = flow.add{
         type="sprite-button",
         sprite=data_sprite,
@@ -486,11 +511,14 @@ function create_gui_list_entry(parent, item_data, button_state)
             quality=item_data.quality
         }
     }
-    
+
     local label = flow.add{type="label", caption=data_name}
     label.style.padding = 2
 end
 
+--- @param rate int32
+--- @param postfix LocalisedString
+--- @return LocalisedString
 function format_gui_list_entry_rate(rate, postfix)
     local suffixes = {
         '',                          -- 10^0
@@ -534,6 +562,8 @@ function format_gui_list_entry_rate(rate, postfix)
 
 end
 
+--- @param player LuaPlayer
+--- @param entity LuaEntity?
 function destroy_assembler_rate_gui(player, entity)
     if not global.gui_data_by_player[player.index] then return end
 
@@ -545,6 +575,7 @@ function destroy_assembler_rate_gui(player, entity)
     global.gui_data_by_player[player.index] = nil
 end
 
+--- @param entity LuaEntity
 function get_crafting_speed_and_bonus(entity)
     if get_real_type(entity) == "reactor" then
         return 0, 0
@@ -588,6 +619,8 @@ end
 
 -- Ghosts don't have module inventory and don't autoapply bonuses,
 -- so this function can be used for this case
+--- @param entity LuaEntity
+--- @return int32 total_speed_percentage, int32 total_productivity_bonus, int32 total_consumption_percentage
 function calculate_modules_bonuses(entity)
     local total_speed_percentage = 1
     local total_productivity_bonus = 0
@@ -619,6 +652,8 @@ function calculate_modules_bonuses(entity)
     return total_speed_percentage, total_productivity_bonus, total_consumption_percentage
 end
 
+--- @param entity LuaEntity
+--- @return PPMItemData[] out_ingredients, PPMItemData[] out_products
 function get_rate_data_for_entity(entity)
     if get_real_type(entity) == "reactor" then return {}, {} end
 
@@ -626,7 +661,9 @@ function get_rate_data_for_entity(entity)
 
     -- special case for mining drills
     if get_real_type(entity) == "mining-drill" then
+        --- @type PPMItemData[]
         local out_ingredients = {}
+        --- @type PPMItemData[]
         local out_products = {}
 
         local mineable_resources, mining_fluid = get_mineable_resources(entity)
@@ -639,7 +676,7 @@ function get_rate_data_for_entity(entity)
                     type = mining_fluid.type,
                     name = mining_fluid.name,
                     rate = mining_speed * mining_fluid.resources_per_second,
-                }
+                } --[[@as PPMItemData]]
             )
         end
 
@@ -655,7 +692,7 @@ function get_rate_data_for_entity(entity)
                             type = resource.type,
                             name = resource.name,
                             rate = mining_speed * resource.resources_per_second,
-                        }
+                        } --[[@as PPMItemData]]
                     )
                 end
             end
@@ -670,7 +707,9 @@ function get_rate_data_for_entity(entity)
     recipe, quality = get_recipe_fallback(entity, recipe, quality)
     if recipe == nil then return {}, {} end
 
+    --- @type PPMItemData[]
     local out_ingredients = {}
+    --- @type PPMItemData[]
     local out_products = {}
 
     local crafts_per_second = crafting_speed/recipe.energy
@@ -682,7 +721,7 @@ function get_rate_data_for_entity(entity)
                 name = ingredient.name,
                 quality = ingredient.type == "item" and quality and quality.name or nil,
                 rate = ingredient.amount * crafts_per_second
-            }
+            } --[[@as PPMItemData]]
         )
     end
 
@@ -709,7 +748,7 @@ function get_rate_data_for_entity(entity)
             if amount_without_productivity <= product_min then
                 bonus_product = ((product_min + product_max)/2 - amount_without_productivity)
             elseif product_min < amount_without_productivity and amount_without_productivity < product_max then
-                -- find the range of possible bonus product values 
+                -- find the range of possible bonus product values
                 -- (min is always 1, since there must be some value where you will get one bonus product)
                 -- then find the percentages of rolls that will produce an extra productivity item
                 local prod_max = product_max - amount_without_productivity
@@ -723,7 +762,7 @@ function get_rate_data_for_entity(entity)
         end
 
         local expected_product = ((product_min + product_max)/2 + bonus_product*bonus_multiplier)*product_probability + product_probability*(product.extra_count_fraction or 0)
-        
+
         -- some mods have item voids that use a recipe with a 0% chance to return products
         -- we don't want to return a product for a dummy void item
         if expected_product > 0 then
@@ -733,7 +772,7 @@ function get_rate_data_for_entity(entity)
                     name = product.name,
                     quality = product.type == "item" and quality and quality.name or nil,
                     rate = expected_product * crafts_per_second
-                }
+                } --[[@as PPMItemData]]
             )
         end
     end
@@ -741,7 +780,10 @@ function get_rate_data_for_entity(entity)
     return out_ingredients, out_products
 end
 
+--- @param entity LuaEntity
+--- @return PPMItemData[] consumable_items
 function get_energy_consumption_for_entity(entity)
+    --- @type PPMItemData[]
     local consumable_items = {}
     local prototype = entity.type == "entity-ghost" and entity.ghost_prototype or entity.prototype
 
@@ -780,7 +822,7 @@ function get_energy_consumption_for_entity(entity)
                         type = item_prototype.type,
                         name = item_prototype.name,
                         rate = fuel_per_second,
-                    }
+                    } --[[@as PPMItemData]]
                 )
             end
         end
@@ -789,13 +831,14 @@ function get_energy_consumption_for_entity(entity)
     return consumable_items
 end
 
--- safe way of getting the name of a recipe
+-- Safe way of getting the name of a recipe
 -- will return the name of the recipe, or nil if no recipe is set
 -- in the case of a furnace, will also check the previous recipe
+--- @param entity LuaEntity
 function get_recipe_name_safe(entity)
     local real_type = get_real_type(entity)
 
-    -- reactor don't have recipes, but they (almost) always have burners
+    -- reactor don't have recipes, but they have (almost) always burners
     if real_type == "reactor" then
         return "reactor"
     end
@@ -809,19 +852,26 @@ function get_recipe_name_safe(entity)
     local recipe = entity.get_recipe()
     local recipe_name = recipe and recipe.name or nil
 
-    if recipe_name == nil and real_type == "furnace" then
-        recipe_name = entity.previous_recipe and entity.previous_recipe.name or nil
+    if recipe_name == nil and real_type == "furnace" and entity.previous_recipe then
+        if type(entity.previous_recipe.name) == "string" then
+            recipe_name = entity.previous_recipe.name --[[@as string]]
+        else
+            recipe_name = entity.previous_recipe.name.name
+        end
     end
 
     return recipe_name
 end
 
+--- @param entity LuaEntity
+--- @param recipe LuaRecipe?
+--- @param quality LuaQualityPrototype?
 function get_recipe_fallback(entity, recipe, quality)
     if recipe == nil and get_real_type(entity) == "furnace" and entity.previous_recipe then
         local previous_recipe_name
 
         if type(entity.previous_recipe.name) == "string" then
-            previous_recipe_name = entity.previous_recipe.name
+            previous_recipe_name = entity.previous_recipe.name --[[@as string]]
         else
             previous_recipe_name = entity.previous_recipe.name.name
         end
@@ -832,12 +882,14 @@ function get_recipe_fallback(entity, recipe, quality)
         quality =
             type(entity.previous_recipe.quality) == "string"
                 and prototypes[entity.previous_recipe.quality]
-                or entity.previous_recipe.quality
+                or entity.previous_recipe.quality --[[@as LuaQualityPrototype|nil]]
     end
 
     return recipe, recipe and quality or nil
 end
 
+--- @param entity LuaEntity
+--- @return string real_name, string real_type
 function get_real_name_and_type(entity)
     local real_type = entity.type
     local real_name = entity.name
@@ -850,18 +902,22 @@ function get_real_name_and_type(entity)
     return real_name, real_type
 end
 
+--- @param entity LuaEntity
 function get_real_name(entity)
     local real_name, real_type = get_real_name_and_type(entity)
 
     return real_name
 end
 
+--- @param entity LuaEntity
 function get_real_type(entity)
     local real_name, real_type = get_real_name_and_type(entity)
 
     return real_type
 end
 
+--- @param entity LuaEntity
+--- @return PPMMineableResourceInfo[]? out_resources, PPMMiningFluidInfo? mining_fluid
 function get_mineable_resources(entity)
     local real_name = get_real_name(entity)
     local mining_target = nil
@@ -896,14 +952,16 @@ function get_mineable_resources(entity)
         local mining_time = mineable_properties.mining_time
         -- amount of mined resources per second
         local global_resources_per_second = 1/mining_time
+        --- @type PPMMineableResourceInfo[]
         local out_resources = {}
 
+        --- @type PPMMiningFluidInfo?
         local mining_fluid = mineable_properties.required_fluid and mineable_properties.fluid_amount and {
             name=mineable_properties.required_fluid,
             type="fluid",
             amount=mineable_properties.fluid_amount,
             resources_per_second=global_resources_per_second,
-        }
+        } --[[@as PPMMiningFluidInfo]]
 
         for _, product in ipairs(mineable_properties.products) do
             local resources_per_second = global_resources_per_second
@@ -934,7 +992,7 @@ function get_mineable_resources(entity)
                     name = product.name,
                     type = product.type, -- item or fluid
                     resources_per_second = resources_per_second,
-                }
+                } --[[@as PPMMineableResourceInfo]]
             )
         end
 

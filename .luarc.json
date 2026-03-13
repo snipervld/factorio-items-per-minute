@@ -1,0 +1,9 @@
+{
+    "workspace.library": ["./fmtk-out"],
+    "runtime.version":"Lua 5.2",
+    "runtime.path":["?.lua"],
+    "runtime.builtin":{"io":"disable","os":"disable","coroutine":"disable","package":"disable","math":"disable","debug":"disable"},
+    "diagnostics.globals":["__DebugAdapter","__Profiler"],
+    "diagnostics.disable":["lowercase-global"],
+    "language.fixIndent":false
+}
