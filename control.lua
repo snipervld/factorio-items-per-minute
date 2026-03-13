@@ -81,6 +81,7 @@ function is_valid_gui_entity(entity)
         or real_type == "furnace"
         or real_type == "mining-drill"
         or real_type == "rocket-silo"
+        or real_type == "reactor"
         )
     then
         return false
@@ -269,6 +270,11 @@ function create_assembler_rate_gui(player, entity)
         gui_frame.anchor = {
             gui = defines.relative_gui_type.rocket_silo_gui,
             position = defines.relative_gui_position.right
+        }
+    elseif real_type == "reactor" then
+        gui_frame.anchor = {
+            gui = defines.relative_gui_type.reactor_gui,
+            position = defines.relative_gui_position.right,
         }
     end
 
@@ -540,6 +546,10 @@ function destroy_assembler_rate_gui(player, entity)
 end
 
 function get_crafting_speed_and_bonus(entity)
+    if get_real_type(entity) == "reactor" then
+        return 0, 0
+    end
+
     -- special case for mining drills
     if get_real_type(entity) == "mining-drill" then
         local force = game.forces.player
@@ -610,6 +620,8 @@ function calculate_modules_bonuses(entity)
 end
 
 function get_rate_data_for_entity(entity)
+    if get_real_type(entity) == "reactor" then return {}, {} end
+
     local crafting_speed, productivity_bonus, mining_fluid_consumption_speed = get_crafting_speed_and_bonus(entity)
 
     -- special case for mining drills
@@ -779,6 +791,11 @@ end
 -- in the case of a furnace, will also check the previous recipe
 function get_recipe_name_safe(entity)
     local real_type = get_real_type(entity)
+
+    -- reactor don't have recipes, but they (almost) always have burners
+    if real_type == "reactor" then
+        return "reactor"
+    end
 
     if real_type == "mining-drill" then
         local mineable_resources = get_mineable_resources(entity)
