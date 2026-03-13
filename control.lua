@@ -665,7 +665,9 @@ function get_rate_data_for_entity(entity)
     end
 
     -- done instead of entity.recipe() since this does null checking and returns previous furnace recipies
+    -- UPD 2026-03-13: it doesn't return previous furnace recipes in my case, so I added this fallback
     local recipe, quality = entity.get_recipe()
+    recipe, quality = get_recipe_fallback(entity, recipe, quality)
     if recipe == nil then return {}, {} end
 
     local out_ingredients = {}
@@ -812,6 +814,28 @@ function get_recipe_name_safe(entity)
     end
 
     return recipe_name
+end
+
+function get_recipe_fallback(entity, recipe, quality)
+    if recipe == nil and get_real_type(entity) == "furnace" and entity.previous_recipe then
+        local previous_recipe_name
+
+        if type(entity.previous_recipe.name) == "string" then
+            previous_recipe_name = entity.previous_recipe.name
+        else
+            previous_recipe_name = entity.previous_recipe.name.name
+        end
+
+        local matching_recipe = game.forces.player.recipes[previous_recipe_name]
+        recipe = matching_recipe or previous_recipe_name
+
+        quality =
+            type(entity.previous_recipe.quality) == "string"
+                and prototypes[entity.previous_recipe.quality]
+                or entity.previous_recipe.quality
+    end
+
+    return recipe, recipe and quality or nil
 end
 
 function get_real_name_and_type(entity)
